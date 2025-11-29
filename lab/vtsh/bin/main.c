@@ -12,7 +12,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <utime.h>
-
 #include <vtsh.h>
 
 #define MAX_LINE 4096
@@ -31,7 +30,8 @@ static void trim_whitespace(char* s) {
 
   char* start = s;
   while (*start != '\0' && (*start == ' ' || *start == '\t' || *start == '\n' ||
-                            *start == '\r' || *start == '\f' || *start == '\v')) {
+                            *start == '\r' || *start == '\f' || *start == '\v')
+  ) {
     start++;
   }
   if (start != s) {
@@ -244,8 +244,9 @@ static int builtin_touch(int argc, char* argv[]) {
     struct utimbuf tb;
     tb.actime = tb.modtime = time(NULL);
     if (utime(path, &tb) != 0) {
-      fprintf(stderr, "touch: utime failed for '%s': %s\n",
-              path, strerror(errno));
+      fprintf(
+          stderr, "touch: utime failed for '%s': %s\n", path, strerror(errno)
+      );
       rc = 1;
     }
   }
@@ -265,7 +266,7 @@ static int builtin_rm(int argc, char* argv[]) {
         force = 1;
         break;
       default:
-        fprintf(stderr, "rm: unsupported option '-%c'\n", optopt);
+        fprintf(stderr, "rm: unsupported option '-%c'\n", (char)opt);
         return 1;
     }
   }
@@ -286,6 +287,7 @@ static int builtin_rm(int argc, char* argv[]) {
       rc = 1;
     }
   }
+
   return rc;
 }
 
