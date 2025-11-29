@@ -1,6 +1,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -256,34 +257,25 @@ static int builtin_touch(int argc, char* argv[]) {
 static int builtin_rm(int argc, char* argv[]) {
   int force = 0;
 
-  optind = 1;
-  opterr = 0;
-  int opt;
-
-  while ((opt = getopt(argc, argv, "f")) != -1) {
-    switch (opt) {
-      case 'f':
-        force = 1;
-        break;
-      default:
-        fprintf(stderr, "rm: unsupported option '-%c'\n", (char)opt);
-        return 1;
-    }
-  }
-
-  if (optind >= argc) {
+  if (argc < 2) {
     fprintf(stderr, "rm: missing operand\n");
     return 1;
   }
 
   int rc = 0;
-  for (int i = optind; i < argc; ++i) {
-    const char* path = argv[i];
-    if (unlink(path) != 0) {
+  for (int i = 1; i < argc; ++i) {
+    const char* arg = argv[i];
+
+    if (strcmp(arg, "-f") == 0) {
+      force = 1;
+      continue;
+    }
+
+    if (unlink(arg) != 0) {
       if (force && errno == ENOENT) {
         continue;
       }
-      fprintf(stderr, "rm: cannot remove '%s': %s\n", path, strerror(errno));
+      fprintf(stderr, "rm: cannot remove '%s': %s\n", arg, strerror(errno));
       rc = 1;
     }
   }
