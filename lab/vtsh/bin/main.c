@@ -325,6 +325,149 @@ static int builtin_wc(int argc, char* argv[]) {
   return 0;
 }
 
+struct tree_entry {
+  char* name;
+  int is_dir;
+};
+
+static int cmp_tree_entry(const void* a, const void* b) {
+  const struct tree_entry* ea = (const struct tree_entry*)a;
+  const struct tree_entry* eb = (const struct tree_entry*)b;
+  return strcmp(ea->name, eb->name);
+}
+
+static void free_tree_entries(struct tree_entry* entries, size_t n) {
+  if (!entries) {
+    return;
+  }
+  for (size_t i = 0; i < n; ++i) {
+    free(entries[i].name);
+  }
+  free(entries);
+}
+
+static void tree_walk(const char* path, const char* prefix,
+                      int* dirs, int* files) {
+  DIR* d = opendir(path);
+  if (!d) {
+    fprintf(stderr, "tree: cannot open '%s': %s\n", path, strerror(errno));
+    return;
+  }
+
+  size_t cap = 32;
+  size_t n = 0;
+  struct tree_entry* entries =
+      (struct tree_entry*)malloc(cap * sizeof(struct tree_entry));
+  if (!entries) {
+    fprintf(stderr, "tree: out of memory\n");
+    closedir(d);
+    return;
+  }
+
+  struct dirent* de;
+  while ((de = readdir(d)) != NULL) {
+    const char* name = de->d_name;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+      continue;
+    }
+
+    if (n == cap) {
+      cap *= 2;
+      struct tree_entry* ne =
+          (struct tree_entry*)realloc(entries, cap * sizeof(struct tree_entry));
+      if (!ne) {
+        fprintf(stderr, "tree: out of memory\n");
+        free_tree_entries(entries, n);
+        closedir(d);
+        return;
+      }
+      entries = ne;
+    }
+
+    entries[n].name = strdup(name);
+    if (!entries[n].name) {
+      fprintf(stderr, "tree: out of memory\n");
+      free_tree_entries(entries, n);
+      closedir(d);
+      return;
+    }
+
+    char full[PATH_MAX];
+    if (snprintf(full, sizeof(full), "%s/%s", path, name) >= (int)sizeof(full)) {
+      entries[n].is_dir = 0;
+    } else {
+      struct stat st;
+      if (lstat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
+        entries[n].is_dir = 1;
+      } else {
+        entries[n].is_dir = 0;
+      }
+    }
+    n++;
+  }
+
+  closedir(d);
+
+  qsort(entries, n, sizeof(struct tree_entry), cmp_tree_entry);
+
+  for (size_t i = 0; i < n; ++i) {
+    int is_last = (i + 1 == n);
+
+    printf("%s%s%s\n", prefix,
+           is_last ? "`-- " : "|-- ",
+           entries[i].name);
+
+    if (entries[i].is_dir) {
+      (*dirs)++;
+      char child_path[PATH_MAX];
+      if (snprintf(child_path, sizeof(child_path), "%s/%s",
+                   path, entries[i].name) < (int)sizeof(child_path)) {
+        char next_prefix[1024];
+        if (snprintf(next_prefix, sizeof(next_prefix), "%s%s",
+                     prefix, is_last ? "    " : "|   ") < (int)sizeof(next_prefix)) {
+          tree_walk(child_path, next_prefix, dirs, files);
+        }
+      }
+    } else {
+      (*files)++;
+    }
+  }
+
+  free_tree_entries(entries, n);
+}
+
+static int builtin_tree(int argc, char* argv[]) {
+  const char* root = ".";
+  if (argc >= 2) {
+    root = argv[1];
+    if (argc > 2) {
+      fprintf(stderr, "tree: multiple roots are not supported\n");
+      return 1;
+    }
+  }
+
+  struct stat st;
+  if (lstat(root, &st) != 0) {
+    fprintf(stderr, "tree: '%s': %s\n", root, strerror(errno));
+    return 1;
+  }
+
+  int dirs = 0;
+  int files = 0;
+
+  if (S_ISDIR(st.st_mode)) {
+    printf("%s\n", root);
+    tree_walk(root, "", &dirs, &files);
+  } else {
+    printf("%s\n", root);
+    files = 1;
+  }
+
+  printf("\n%d directories, %d files\n", dirs, files);
+  fflush(stdout);
+  return 0;
+}
+
 static int run_simple_command(char* cmd) {
   trim_whitespace(cmd);
   if (*cmd == '\0') {
@@ -408,6 +551,14 @@ static int run_simple_command(char* cmd) {
 
   if (strcmp(argv[0], "wc") == 0) {
     int rc = builtin_wc(argc, argv);
+    double end = now_seconds();
+    fprintf(stderr, "Command executed in %.6f seconds\n", end - start);
+    fflush(stderr);
+    return rc;
+  }
+
+  if (strcmp(argv[0], "tree") == 0) {
+    int rc = builtin_tree(argc, argv);
     double end = now_seconds();
     fprintf(stderr, "Command executed in %.6f seconds\n", end - start);
     fflush(stderr);
